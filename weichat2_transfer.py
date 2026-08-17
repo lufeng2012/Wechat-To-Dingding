@@ -11,48 +11,62 @@ import requests
 import json
 
 # ================== 钉钉机器人配置 ==================
-DINGTALK_WEBHOOK = 'https://oapi.dingtalk.com/robot/send?access_token=8a1887fb0a8c6181db676173963cb638711eea971faf922f0ae4c8f2dbd680c1'
-DINGTALK_SECRET = 'SEC4feb9e223eaec10d6cf20fea273a94d0f0f72fa8a729a70ea0a91f494e10eab1'
+# 现在支持多个机器人，每个机器人是一个字典，包含 webhook 和 secret
+DINGTALK_ROBOTS = [
+    {
+        'webhook': 'https://oapi.dingtalk.com/robot/send?access_token=8a1887fb0a8c6181db676173963cb638711eea971faf922f0ae4c8f2dbd680c1',
+        'secret': 'SEC4feb9e223eaec10d6cf20fea273a94d0f0f72fa8a729a70ea0a91f494e10eab1'
+    },
+    {
+        'webhook': 'https://oapi.dingtalk.com/robot/send?access_token=6798a7feabaf6f1f3e9e2a95b12b2e6375fb521b381bee8f037eecc117fb9c06',
+        'secret': 'SEC7ac720ef72515807e2754fce05c07e40c9e0420e44dce5499162129065afa2ad'
+    }
+]
 # ==================================================
 
-def get_dingtalk_sign():
+def get_dingtalk_sign(secret):
+    """根据传入的 secret 生成签名"""
     timestamp = str(round(time.time() * 1000))
-    secret_enc = DINGTALK_SECRET.encode('utf-8')
-    string_to_sign = '{}\n{}'.format(timestamp, DINGTALK_SECRET)
+    secret_enc = secret.encode('utf-8')
+    string_to_sign = '{}\n{}'.format(timestamp, secret)
     string_to_sign_enc = string_to_sign.encode('utf-8')
     hmac_code = hmac.new(secret_enc, string_to_sign_enc, digestmod=hashlib.sha256).digest()
     sign = urllib.parse.quote_plus(base64.b64encode(hmac_code))
     return timestamp, sign
 
 def send_to_dingtalk(msg_type, content, sender="未知"):
-    timestamp, sign = get_dingtalk_sign()
-    url = f"{DINGTALK_WEBHOOK}&timestamp={timestamp}&sign={sign}"
-    headers = {'Content-Type': 'application/json'}
-    
-    if content: 
-        content_to_send = content[:4096]
-        data = {
-            "msgtype": "text",
-            "text": {
-                "content": f"【来自 {sender}】\n{content_to_send}"
+    """循环遍历所有机器人，分别发送消息"""
+    for robot in DINGTALK_ROBOTS:
+        webhook = robot['webhook']
+        secret = robot['secret']
+        
+        timestamp, sign = get_dingtalk_sign(secret)
+        url = f"{webhook}&timestamp={timestamp}&sign={sign}"
+        headers = {'Content-Type': 'application/json'}
+        
+        if content: 
+            content_to_send = content[:4096]
+            data = {
+                "msgtype": "text",
+                "text": {
+                    "content": f"【来自 {sender}】\n{content_to_send}"
+                }
             }
-        }
-    else:
-        data = {
-            "msgtype": "text",
-            "text": {
-                "content": f"【来自 {sender}】\n发来了一条{msg_type}消息，请在微信中查看。"
+        else:
+            data = {
+                "msgtype": "text",
+                "text": {
+                    "content": f"【来自 {sender}】\n发来了一条{msg_type}消息，请在微信中查看。"
+                }
             }
-        }
 
-    try:
-        response = requests.post(url, headers=headers, data=json.dumps(data))
-        result = response.json()
-        if result.get('errcode') != 0:
-            print(f"[{datetime.now()}] 钉钉发送失败: {result.get('errmsg')}")
-    except Exception as e:
-        print(f"[{datetime.now()}] 发送钉钉请求时出错: {e}")
-
+        try:
+            response = requests.post(url, headers=headers, data=json.dumps(data))
+            result = response.json()
+            if result.get('errcode') != 0:
+                print(f"[{datetime.now()}] 钉钉发送失败 (Webhook: {webhook[:20]}...): {result.get('errmsg')}")
+        except Exception as e:
+            print(f"[{datetime.now()}] 发送钉钉请求时出错 (Webhook: {webhook[:20]}...): {e}")
 
 # ================== 消息脱敏处理 ==================
 def process_message(content):
