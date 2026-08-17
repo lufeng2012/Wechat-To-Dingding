@@ -3,6 +3,7 @@ import hmac
 import hashlib
 import base64
 import urllib.parse
+import re
 from datetime import datetime
 
 from wxauto import WeChat
@@ -28,7 +29,6 @@ def send_to_dingtalk(msg_type, content, sender="未知"):
     url = f"{DINGTALK_WEBHOOK}&timestamp={timestamp}&sign={sign}"
     headers = {'Content-Type': 'application/json'}
     
-    # 核心修改：只要 content 不为空，就发送文本内容
     if content: 
         content_to_send = content[:4096]
         data = {
@@ -38,7 +38,6 @@ def send_to_dingtalk(msg_type, content, sender="未知"):
             }
         }
     else:
-        # 只有当 content 确实为空时，才发送提示语
         data = {
             "msgtype": "text",
             "text": {
@@ -54,19 +53,74 @@ def send_to_dingtalk(msg_type, content, sender="未知"):
     except Exception as e:
         print(f"[{datetime.now()}] 发送钉钉请求时出错: {e}")
 
+
+# ================== 消息脱敏处理 ==================
+def process_message(content):
+    if not content:
+        return content
+
+    processed = content
+
+    # 通用清理：先删【以上观点...】整块，再删投资顾问
+    processed = re.sub(r'【以上观点[^】]*】', '', processed, flags=re.DOTALL)
+    processed = re.sub(r'投资顾问\s*\S+.*$', '', processed, flags=re.DOTALL)
+
+    # ★ 需求D（减仓）提到最前面，优先判断 ★
+    if '减仓' in processed:
+        stock_info = None
+        match = re.search(r'([\u4e00-\u9fa5A-Za-z]+\s*[（(]\s*\d{5,6}\s*[）)])', processed)
+        if match:
+            stock_info = match.group(1)
+        else:
+            match2 = re.match(r'^(?:研究建议[：:])?\s*([\u4e00-\u9fa5A-Za-z]+)\s*.*?减仓', processed.strip())
+            if match2:
+                stock_info = match2.group(1)
+        if stock_info:
+            processed = f"{stock_info}\n这个股票，上窜下蹦，我心脏不好，我要减仓了，股票不是银行，盈亏自付，我的操作个人操作，大家不要受我的操盘影响，自行操作就好"
+            return processed
+
+    # 需求A：教学建议类消息
+    if '公司研究教学关注' in processed:
+        processed = re.sub(r'【教学建议】\s*——\s*公司研究教学关注[：:]\s*', '', processed)
+        processed = re.sub(
+            r'([\u4e00-\u9fa5A-Za-z]+\s*[（(]\s*\d{5,6}\s*[）)])[\s\d.元\-附近教学关注%仓位清仓]+',
+            r'\1 ',
+            processed
+        )
+        processed = re.sub(r'参考止损价\s*[\d.]+\s*元', '', processed)
+        processed = processed.strip() + '\n大家怎么看。'
+        return processed
+
+    # 需求B：加仓类消息
+    if '研究建议' in processed and '加仓' in processed:
+        match = re.search(r'([\u4e00-\u9fa5A-Za-z]+\s*[（(]\s*\d{5,6}\s*[）)])', processed)
+        if match:
+            stock_info = match.group(1)
+            processed = f"{stock_info}\n这个票大家怎么看，不是重复消息，不是重复消息，股票不是银行，盈亏自付"
+            return processed
+
+    # 需求C：止盈类消息
+    if '研究建议' in processed and '止盈' in processed:
+        match = re.search(r'([\u4e00-\u9fa5A-Za-z]+\s*[（(]\s*\d{5,6}\s*[）)])', processed)
+        if match:
+            stock_info = match.group(1)
+            processed = f"{stock_info}\n这个股票，上窜下蹦，我心脏不好，准备先走了，股票不是银行，盈亏自付，我的操作个人操作，大家不要受我的操盘影响，自行操作就好"
+            return processed
+
+    # 需求E：兜底 - 通用清理已完成，直接返回
+    return processed
+# ==================================================
+
 def main():
     wx = WeChat()
     
-    # 打印所有好友/群列表，用于确认准确名称
     all_contacts = wx.GetAllFriends()
     print("所有联系人列表：")
     for contact in all_contacts:
         print(f"  - {contact}")
     
-    # 替换为你从上面列表中复制的准确名称
-    listen_list = ['泰山鲁','周彩钰A0220623080007'] 
+    listen_list = ['个人交流平台', '教学老师'] 
     
-    # 显式添加监听对象（白名单机制）
     for name in listen_list:
         try:
             wx.AddListenChat(who=name)
@@ -80,15 +134,10 @@ def main():
         try:
             msgs = wx.GetListenMessage()
             
-            # 只有当字典不为空时才打印日志，避免刷屏
             if msgs:
                 print(f"[{datetime.now()}] 收到 {len(msgs)} 个聊天的新消息")
                 
-                # 核心修复：使用 .items() 遍历字典
-                # chat_obj 是聊天窗口对象，msg_list 是消息列表
                 for chat_obj, msg_list in msgs.items():
-                    # 获取聊天对象的名称（即 who）
-                    # wxauto 的 ChatWnd 对象通常可以通过 .who 属性获取名称
                     who = getattr(chat_obj, 'who', str(chat_obj)) 
                     
                     for msg in msg_list:
@@ -98,10 +147,9 @@ def main():
                         
                         print(f"[{current_time}] {who}: [{msg_type}] {msg_content}")
                         
-                        # 检查发送者是否在监听列表中
-                        # 使用 in 关键字进行模糊匹配，防止备注名不完全一致
                         if who in listen_list or any(name in who for name in listen_list):
-                            send_to_dingtalk(msg_type, msg_content, sender=who)
+                            processed_content = process_message(msg_content)
+                            send_to_dingtalk(msg_type, processed_content, sender=who)
                             
         except Exception as e:
             print(f"[{datetime.now()}] 程序运行出错: {e}")
