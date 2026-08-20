@@ -1,0 +1,13 @@
+{
+    "dingtalk_robots": [
+        {
+            "webhook": "https://oapi.dingtalk.com/robot/send?access_token=88615524ccce0c5b57b07abaa35853621770b34dd79ca9d36f621401bc4271ae",
+            "secret": "SEC3a96987b40c187216e6c0c786a7e775474a91435c5fa02c6d40cfd80db72df01"
+        }
+    ],
+    "wx_forward_groups": [],
+    "listen_list": [
+        "123",
+        "123"
+    ]
+}

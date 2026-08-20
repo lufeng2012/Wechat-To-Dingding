@@ -1,0 +1,17 @@
+{
+    "dingtalk_robots": [
+        {
+            "webhook": "https://oapi.dingtalk.com/robot/send?access_token=8a1887fb0a8c6181db676173963cb638711eea971faf922f0ae4c8f2dbd680c1",
+            "secret": "SEC4feb9e223eaec10d6cf20fea273a94d0f0f72fa8a729a70ea0a91f494e10eab1"
+        },
+        {
+            "webhook": "https://oapi.dingtalk.com/robot/send?access_token=6798a7feabaf6f1f3e9e2a95b12b2e6375fb521b381bee8f037eecc117fb9c06",
+            "secret": "SEC7ac720ef72515807e2754fce05c07e40c9e0420e44dce5499162129065afa2ad"
+        }
+    ],
+    "wx_forward_groups": [],
+    "listen_list": [
+        "个人交流平台",
+        "教学老师"
+    ]
+}
